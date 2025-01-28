@@ -15,6 +15,10 @@ const paddleSpeed = 6;
 let leftScore = 0;
 let rightScore = 0;
 
+// Spielstatus
+let gameOver = false;
+let winner = null;
+
 // Linkes Paddle
 let leftPaddle = {
     x: 10,
@@ -37,7 +41,9 @@ let ball = {
     x: WIDTH / 2,
     y: HEIGHT / 2,
     dx: 4,
-    dy: 4
+    dy: 4,
+    normalSpeed: { dx: 4, dy: 4 }, // Speichert die normale Geschwindigkeit
+    speedMultiplier: 1 // Aktueller Geschwindigkeitsfaktor
 };
 
 // Steuerung
@@ -48,47 +54,45 @@ let lastPaddleHit = null;
 
 // Power-Up Typen
 const POWERUP_TYPES = {
-    PADDLE: 'paddle',
-    BALL_SPEED: 'ballSpeed'
+    BALL_SPEED: 'ballSpeed',
+    PADDLE_SIZE: 'paddleSize'
 };
 
-// Power-Ups Array
-let powerUps = [
-    {
-        type: POWERUP_TYPES.PADDLE,
-        x: 0,
-        y: 0,
-        radius: 15,
-        active: false,
-        color: 'blue'
-    },
-    {
-        type: POWERUP_TYPES.BALL_SPEED,
-        x: 0,
-        y: 0,
-        radius: 15,
-        active: false,
-        color: 'red'
-    }
-];
+// Aktive Power-Ups Array
+let activePowerUps = [];
 
-// Timer für Power-Ups
+// Timer für Power-Up-Spawns
 let powerUpTimers = {
-    [POWERUP_TYPES.PADDLE]: null,
-    [POWERUP_TYPES.BALL_SPEED]: null
+    [POWERUP_TYPES.BALL_SPEED]: null,
+    [POWERUP_TYPES.PADDLE_SIZE]: null
 };
+
+// Flag, um zu verfolgen, ob das Paddle-Size Power-Up bereits gespawnt wurde
+let paddleSizePowerUpSpawned = false;
 
 // Event Listener für Tastendrücke
 document.addEventListener('keydown', (e) => {
     keys[e.key.toLowerCase()] = true;
+
+    // Neustart des Spiels mit 'R'
+    if (gameOver && e.key.toLowerCase() === 'r') {
+        restartGame();
+    }
 });
 
 document.addEventListener('keyup', (e) => {
     keys[e.key.toLowerCase()] = false;
 });
 
+// Globale Event Listener für 'pointScored' um Ball Speed zurückzusetzen
+document.addEventListener('pointScored', () => {
+    ball.speedMultiplier = 1;
+});
+
 // Funktion zum Aktualisieren des Spiels
 function update() {
+    if (gameOver) return; // Spiel nicht aktualisieren, wenn es vorbei ist
+
     // Bewegung der linken Paddle (W und S)
     if (keys['w']) {
         leftPaddle.dy = -paddleSpeed;
@@ -116,8 +120,8 @@ function update() {
     rightPaddle.y = Math.max(Math.min(rightPaddle.y, HEIGHT - rightPaddle.height), 0);
 
     // Update Ball
-    ball.x += ball.dx;
-    ball.y += ball.dy;
+    ball.x += ball.dx * ball.speedMultiplier;
+    ball.y += ball.dy * ball.speedMultiplier;
 
     // Kollision mit Ober- und Unterkante
     if (ball.y + ballRadius > HEIGHT || ball.y - ballRadius < 0) {
@@ -127,11 +131,11 @@ function update() {
     // Kollision mit Paddles
     if (
         (ball.x - ballRadius < leftPaddle.x + paddleWidth &&
-         ball.y > leftPaddle.y &&
-         ball.y < leftPaddle.y + leftPaddle.height) ||
+            ball.y > leftPaddle.y &&
+            ball.y < leftPaddle.y + leftPaddle.height) ||
         (ball.x + ballRadius > rightPaddle.x &&
-         ball.y > rightPaddle.y &&
-         ball.y < rightPaddle.y + rightPaddle.height)
+            ball.y > rightPaddle.y &&
+            ball.y < rightPaddle.y + rightPaddle.height)
     ) {
         ball.dx *= -1;
 
@@ -150,63 +154,58 @@ function update() {
     // Punktestand aktualisieren
     if (ball.x - ballRadius < 0) {
         rightScore++;
+        dispatchPointScored();
+        checkGameOver();
         resetBall();
     } else if (ball.x + ballRadius > WIDTH) {
         leftScore++;
+        dispatchPointScored();
+        checkGameOver();
         resetBall();
     }
 
     // Überprüfen, ob Power-Ups aktiv sind und ob sie getroffen wurden
-    powerUps.forEach((powerUp) => {
-        if (powerUp.active) {
-            const dx = ball.x - powerUp.x;
-            const dy = ball.y - powerUp.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
+    activePowerUps.forEach((powerUp, index) => {
+        const dx = ball.x - powerUp.x;
+        const dy = ball.y - powerUp.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
 
-            if (distance <= ballRadius + powerUp.radius) {
-                // Power-Up wurde getroffen
-                applyPowerUp(powerUp.type);
-                // Power-Up deaktivieren und nächsten Zeitpunkt planen
-                powerUp.active = false;
-                scheduleNextPowerUp(powerUp.type);
-            }
+        if (distance <= ballRadius + powerUp.radius) {
+            // Power-Up wurde getroffen
+            applyPowerUp(powerUp.type);
+            // Power-Up aus der aktiven Liste entfernen
+            activePowerUps.splice(index, 1);
         }
     });
 }
 
 // Funktion zum Anwenden des Power-Ups
 function applyPowerUp(type) {
-    if (type === POWERUP_TYPES.PADDLE) {
+    if (type === POWERUP_TYPES.BALL_SPEED) {
+        // Ballgeschwindigkeit verdoppeln
+        ball.speedMultiplier *= 2;
+
+        // Hinweis: Die Geschwindigkeit wird automatisch zurückgesetzt, wenn ein Punkt erzielt wird
+    } else if (type === POWERUP_TYPES.PADDLE_SIZE) {
         if (lastPaddleHit === 'left') {
             // Paddle des linken Spielers verdoppeln
             leftPaddle.height = originalPaddleHeight * 2;
             // Sicherstellen, dass das Paddle nicht aus dem Spielfeld ragt
             leftPaddle.y = Math.max(Math.min(leftPaddle.y, HEIGHT - leftPaddle.height), 0);
-            // Nach 10 Sekunden die ursprüngliche Größe wiederherstellen
+            // Nach 1 Minute die ursprüngliche Größe wiederherstellen
             setTimeout(() => {
                 leftPaddle.height = originalPaddleHeight;
-            }, 10000);
+            }, 60000); // 60.000 Millisekunden = 1 Minute
         } else if (lastPaddleHit === 'right') {
             // Paddle des rechten Spielers verdoppeln
             rightPaddle.height = originalPaddleHeight * 2;
             // Sicherstellen, dass das Paddle nicht aus dem Spielfeld ragt
             rightPaddle.y = Math.max(Math.min(rightPaddle.y, HEIGHT - rightPaddle.height), 0);
-            // Nach 10 Sekunden die ursprüngliche Größe wiederherstellen
+            // Nach 1 Minute die ursprüngliche Größe wiederherstellen
             setTimeout(() => {
                 rightPaddle.height = originalPaddleHeight;
-            }, 10000);
+            }, 60000); // 60.000 Millisekunden = 1 Minute
         }
-    } else if (type === POWERUP_TYPES.BALL_SPEED) {
-        // Ballgeschwindigkeit verdoppeln
-        ball.dx *= 2;
-        ball.dy *= 2;
-
-        // Nach 10 Sekunden die Ballgeschwindigkeit wiederherstellen
-        setTimeout(() => {
-            // Stelle sicher, dass die Geschwindigkeit nicht unter einen bestimmten Wert fällt
-            ball.dx = ball.dx > 0 ? 4 : -4;
-            ball.dy = ball.dy > 0 ? 4 : -4;
-        }, 10000);
     }
 }
 
@@ -214,9 +213,13 @@ function applyPowerUp(type) {
 function resetBall() {
     ball.x = WIDTH / 2;
     ball.y = HEIGHT / 2;
-    // Zufällige Richtung nach dem Reset
-    ball.dx = Math.random() > 0.5 ? 4 : -4;
-    ball.dy = 4;
+    // Speichert die normale Geschwindigkeit
+    ball.dx = ball.normalSpeed.dx;
+    ball.dy = ball.normalSpeed.dy;
+    ball.speedMultiplier = 1;
+
+    // Trigger Punkt-Erzielung für 'pointScored' Event
+    dispatchPointScored();
 }
 
 // Funktion zum Zeichnen des Spiels
@@ -238,14 +241,12 @@ function draw() {
     context.closePath();
 
     // Power-Ups anzeigen, wenn aktiv
-    powerUps.forEach((powerUp) => {
-        if (powerUp.active) {
-            context.beginPath();
-            context.arc(powerUp.x, powerUp.y, powerUp.radius, 0, Math.PI * 2);
-            context.fillStyle = powerUp.color;
-            context.fill();
-            context.closePath();
-        }
+    activePowerUps.forEach((powerUp) => {
+        context.beginPath();
+        context.arc(powerUp.x, powerUp.y, powerUp.radius, 0, Math.PI * 2);
+        context.fillStyle = powerUp.color;
+        context.fill();
+        context.closePath();
     });
 
     // Spielstand anzeigen
@@ -260,26 +261,117 @@ function draw() {
     // Rechts in Rot
     context.fillStyle = 'red';
     context.fillText(rightScore, WIDTH / 2 + 50, HEIGHT / 2 - 30);
+
+    // Gewinner anzeigen, wenn Spiel vorbei ist
+    if (gameOver && winner) {
+        context.font = 'bold 50px Arial';
+        context.fillStyle = 'yellow';
+        context.fillText(`${winner} hat gewonnen!`, WIDTH / 2, HEIGHT / 2);
+        context.font = 'bold 30px Arial';
+        context.fillText(`Drücke 'R' zum Neustarten`, WIDTH / 2, HEIGHT / 2 + 50);
+    }
 }
 
 // Funktion zum Erstellen eines Power-Ups
 function spawnPowerUp(type) {
-    const powerUp = powerUps.find(pu => pu.type === type);
-    if (powerUp) {
-        powerUp.x = Math.random() * (WIDTH - 30) + 15; // Vermeide Randbereiche
-        powerUp.y = Math.random() * (HEIGHT - 30) + 15;
-        powerUp.active = true;
+    // Eigenschaften basierend auf dem Typ festlegen
+    let color;
+    if (type === POWERUP_TYPES.BALL_SPEED) {
+        color = 'red';
+    } else if (type === POWERUP_TYPES.PADDLE_SIZE) {
+        color = 'blue';
+    }
+
+    // Power-Up Objekt erstellen
+    const newPowerUp = {
+        type: type,
+        x: Math.random() * (WIDTH - 30) + 15, // Vermeide Randbereiche
+        y: Math.random() * (HEIGHT - 30) + 15,
+        radius: 15,
+        color: color
+    };
+
+    // Power-Up zur aktiven Liste hinzufügen
+    activePowerUps.push(newPowerUp);
+}
+
+// Funktion zum Planen des nächsten BALL_SPEED Power-Ups
+function scheduleBallSpeedPowerUp() {
+    const minDelay = 5000; // 5 Sekunden (erhöht)
+    const maxDelay = 30000; // 30 Sekunden (erhöht)
+    const delay = Math.random() * (maxDelay - minDelay) + minDelay;
+
+    powerUpTimers.BALL_SPEED = setTimeout(() => {
+        spawnPowerUp(POWERUP_TYPES.BALL_SPEED);
+        scheduleBallSpeedPowerUp(); // Plane das nächste BALL_SPEED Power-Up
+    }, delay);
+}
+
+// Funktion zum Planen des Paddle_Size Power-Ups
+function schedulePaddleSizePowerUp() {
+    if (paddleSizePowerUpSpawned) return; // Nur einmal pro Spiel
+
+    const minDelay = 10000; // 10 Sekunden (erhöht)
+    const maxDelay = 60000; // 60 Sekunden (erhöht)
+    const delay = Math.random() * (maxDelay - minDelay) + minDelay;
+
+    powerUpTimers.PADDLE_SIZE = setTimeout(() => {
+        spawnPowerUp(POWERUP_TYPES.PADDLE_SIZE);
+        paddleSizePowerUpSpawned = true; // Markiere, dass das Paddle_Size Power-Up gespawnt wurde
+    }, delay);
+}
+
+// Funktion zum Überprüfen des Spielendes
+function checkGameOver() {
+    if (leftScore >= 5) {
+        gameOver = true;
+        winner = 'Linker Spieler';
+        endGame();
+    } else if (rightScore >= 5) {
+        gameOver = true;
+        winner = 'Rechter Spieler';
+        endGame();
     }
 }
 
-// Funktion zum Planen des nächsten Power-Ups
-function scheduleNextPowerUp(type) {
-    const maxDelay = 100000; // 5 Minuten in Millisekunden
-    const delay = Math.random() * maxDelay;
-    const timer = setTimeout(() => {
-        spawnPowerUp(type);
-    }, delay);
-    powerUpTimers[type] = timer;
+// Funktion zum Beenden des Spiels
+function endGame() {
+    // Stoppe das Power-Up-Spawning
+    clearTimeout(powerUpTimers.BALL_SPEED);
+    clearTimeout(powerUpTimers.PADDLE_SIZE);
+
+    // Entferne alle aktiven Power-Ups
+    activePowerUps = [];
+}
+
+// Funktion zum Neustarten des Spiels
+function restartGame() {
+    // Reset Spielzustand
+    leftScore = 0;
+    rightScore = 0;
+    gameOver = false;
+    winner = null;
+
+    // Reset Paddles
+    leftPaddle.y = HEIGHT / 2 - originalPaddleHeight / 2;
+    rightPaddle.y = HEIGHT / 2 - originalPaddleHeight / 2;
+    leftPaddle.height = originalPaddleHeight;
+    rightPaddle.height = originalPaddleHeight;
+
+    // Reset Ball
+    resetBall();
+
+    // Reset Paddle-Size Power-Up Spawn Flag
+    paddleSizePowerUpSpawned = false;
+
+    // Starte das Power-Up-Spawning neu
+    scheduleBallSpeedPowerUp();
+    schedulePaddleSizePowerUp();
+}
+
+// Funktion zum Dispatchen des 'pointScored' Events
+function dispatchPointScored() {
+    document.dispatchEvent(new Event('pointScored'));
 }
 
 // Game Loop
@@ -289,6 +381,7 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
-// Start des Spiels und Planen der ersten Power-Ups
+// Starte das Spiel und plane die Power-Ups
 gameLoop();
-powerUps.forEach(powerUp => scheduleNextPowerUp(powerUp.type));
+scheduleBallSpeedPowerUp();
+schedulePaddleSizePowerUp();
