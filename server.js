@@ -17,7 +17,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Start des Servers
-app.listen(PORT, () => {
+// Starte den Server
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server läuft auf http://localhost:${PORT}`);
 });
