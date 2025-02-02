@@ -475,6 +475,9 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
+
+
+
 // Starte das Spiel und plane die Power-Ups
 gameLoop();
 scheduleBallSpeedPowerUp();
