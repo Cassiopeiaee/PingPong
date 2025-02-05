@@ -8,16 +8,17 @@ body, html {
     align-items: center;
     font-family: Arial, sans-serif;
     background-color: #000;
-}
-
-#home-screen {
+  }
+  
+  #home-screen {
     position: absolute;
     text-align: center;
     color: #fff;
     z-index: 2;
-}
-
-#start-button {
+  }
+  
+  /* Gemeinsamer Stil für beide Buttons */
+  #start-button, #multiplayer-button {
     padding: 10px 20px;
     font-size: 1.2em;
     cursor: pointer;
@@ -25,16 +26,18 @@ body, html {
     border: none;
     color: white;
     border-radius: 5px;
-}
-
-#start-button:hover {
+    margin: 5px;
+  }
+  
+  #start-button:hover, #multiplayer-button:hover {
     background-color: #45a049;
-}
-
-#game-canvas {
+  }
+  
+  #game-canvas {
     position: absolute;
     width: 100%;
     height: 100%;
     z-index: 1;
-    opacity: 0.5;
-}
+    /* opacity entfernt, damit der Hintergrund voll sichtbar ist */
+  }
+  
