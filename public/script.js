@@ -347,7 +347,7 @@ function draw() {
     }
 }
 
-// Funktion zum Erstellen eines Power-Ups
+
 function spawnPowerUp(type) {
     // Eigenschaften basierend auf dem Typ festlegen
     let color;
@@ -362,7 +362,7 @@ function spawnPowerUp(type) {
     // Power-Up Objekt erstellen
     const newPowerUp = {
         type: type,
-        x: Math.random() * (WIDTH - 30) + 15, // Vermeide Randbereiche
+        x: Math.random() * (WIDTH - 30) + 15, 
         y: Math.random() * (HEIGHT - 30) + 15,
         radius: 15,
         color: color
@@ -477,8 +477,6 @@ function gameLoop() {
 
 
 
-
-// Starte das Spiel und plane die Power-Ups
 gameLoop();
 scheduleBallSpeedPowerUp();
 schedulePaddleSizePowerUp();
